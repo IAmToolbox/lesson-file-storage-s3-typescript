@@ -5,6 +5,8 @@ import type { ApiConfig } from "../config";
 import type { BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 
+import path from "node:path";
+
 type Thumbnail = {
   data: ArrayBuffer;
   mediaType: string;
@@ -57,16 +59,22 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   const fileType = file.type;
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const encodedThumbnail = buffer.toString("base64");
-  const dataURL = `data:${fileType};base64,${encodedThumbnail}`;
-  const videoMetadata = getVideo(cfg.db, videoId);
-  if (!(videoMetadata.userID === userID)) {
-    throw new UserForbiddenError("Wrong user");
-  }
-  //videoThumbnails.set(videoId, { data: buffer, mediaType: fileType });
-  //const thumbnailURL = `http://localhost:${cfg.port}/api/thumbnails/:${videoId}`;
-  videoMetadata.thumbnailURL = dataURL;
-  updateVideo(cfg.db, videoMetadata);
+  if (fileType.includes("image")) {
+    const extension = fileType.slice(6);
+    const filePath = path.join(cfg.assetsRoot, `${videoId}.${extension}`);
+    await Bun.write(filePath, file);
+    //const dataURL = `data:${fileType};base64,${encodedThumbnail}`;
+    const videoMetadata = getVideo(cfg.db, videoId);
+    if (!(videoMetadata.userID === userID)) {
+      throw new UserForbiddenError("Wrong user");
+    }
+    //videoThumbnails.set(videoId, { data: buffer, mediaType: fileType });
+    const thumbnailURL = `http://localhost:${cfg.port}/assets/${videoId}.${extension}`;
+    videoMetadata.thumbnailURL = thumbnailURL;
+    updateVideo(cfg.db, videoMetadata);
 
-  return respondWithJSON(200, videoMetadata);
+    return respondWithJSON(200, videoMetadata);
+  } else {
+    throw new BadRequestError("Unsupported file type");
+  }
 }

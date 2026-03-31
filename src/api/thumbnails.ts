@@ -6,6 +6,7 @@ import type { BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 
 import path from "node:path";
+const { randomBytes } = await import("node:crypto");
 
 type Thumbnail = {
   data: ArrayBuffer;
@@ -58,10 +59,12 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   }
   const fileType = file.type;
 
-  const buffer = Buffer.from(await file.arrayBuffer());
+  const buffer = randomBytes(32);
+  const fileName = buffer.toString("base64url");
+
   if (fileType.includes("image")) {
     const extension = fileType.slice(6);
-    const filePath = path.join(cfg.assetsRoot, `${videoId}.${extension}`);
+    const filePath = path.join(cfg.assetsRoot, `${fileName}.${extension}`);
     await Bun.write(filePath, file);
     //const dataURL = `data:${fileType};base64,${encodedThumbnail}`;
     const videoMetadata = getVideo(cfg.db, videoId);
@@ -69,7 +72,7 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
       throw new UserForbiddenError("Wrong user");
     }
     //videoThumbnails.set(videoId, { data: buffer, mediaType: fileType });
-    const thumbnailURL = `http://localhost:${cfg.port}/assets/${videoId}.${extension}`;
+    const thumbnailURL = `http://localhost:${cfg.port}/assets/${fileName}.${extension}`;
     videoMetadata.thumbnailURL = thumbnailURL;
     updateVideo(cfg.db, videoMetadata);
 

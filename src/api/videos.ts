@@ -54,3 +54,15 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
     throw new BadRequestError("Unsupported file type");
   }
 }
+
+async function getVideoAspectRatio(filePath: string) {
+  const ffprobeProc = Bun.spawn(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", filePath], {
+    stderr: "pipe",
+  });
+  const stdoutText = await new Response(ffprobeProc.stdout).text();
+  const stderrText = await new Response(ffprobeProc.stderr).text();
+  if (ffprobeProc.exited !== 0) {
+    console.err(stderrText);
+    throw new Error("Couldn't parse aspect ratio");
+  }
+}

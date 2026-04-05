@@ -39,12 +39,13 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
     const extension = fileType.slice(6);
     const filePath = path.join(cfg.assetsRoot, `temp.${extension}`)
     await Bun.write(filePath, file);
+    const ratio = await getVideoAspectRatio(filePath);
 
-    const s3File = cfg.s3Client.file(`${keyName}.${extension}`, { bucket: cfg.s3Bucket });
+    const s3File = cfg.s3Client.file(`${ratio}/${keyName}.${extension}`, { bucket: cfg.s3Bucket });
     const videoFile = Bun.file(filePath);
     await s3File.write(videoFile, { type: fileType });
 
-    const videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${keyName}.${extension}`;
+    const videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${ratio}/${keyName}.${extension}`;
     videoMetadata.videoURL = videoURL;
     updateVideo(cfg.db, videoMetadata);
 
@@ -59,10 +60,25 @@ async function getVideoAspectRatio(filePath: string) {
   const ffprobeProc = Bun.spawn(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "json", filePath], {
     stderr: "pipe",
   });
+  const exitCode = await ffprobeProc.exited;
   const stdoutText = await new Response(ffprobeProc.stdout).text();
   const stderrText = await new Response(ffprobeProc.stderr).text();
-  if (ffprobeProc.exited !== 0) {
-    console.err(stderrText);
+  if (exitCode !== 0) {
+    console.error(stderrText);
     throw new Error("Couldn't parse aspect ratio");
   }
+  const stdoutParsed = JSON.parse(stdoutText);
+  const width = stdoutParsed.streams[0].width;
+  const height = stdoutParsed.streams[0].height;
+
+  // Time to parse out the aspect ratio
+
+  if (Math.floor(16 * (height / 9)) === width) {
+    return "landscape";
+  } else if (Math.floor(16 * (width / 9)) === height) {
+    return "portrait";
+  } else {
+    return "other";
+  }
 }
+

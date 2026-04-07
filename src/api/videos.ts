@@ -40,9 +40,10 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
     const filePath = path.join(cfg.assetsRoot, `temp.${extension}`)
     await Bun.write(filePath, file);
     const ratio = await getVideoAspectRatio(filePath);
+    const processedFilePath = await processVideoForFastStart(filePath);
 
     const s3File = cfg.s3Client.file(`${ratio}/${keyName}.${extension}`, { bucket: cfg.s3Bucket });
-    const videoFile = Bun.file(filePath);
+    const videoFile = Bun.file(processedFilePath);
     await s3File.write(videoFile, { type: fileType });
 
     const videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${ratio}/${keyName}.${extension}`;
@@ -50,6 +51,7 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
     updateVideo(cfg.db, videoMetadata);
 
     await Bun.file(filePath).delete();
+    await Bun.file(processedFilePath).delete();
     return respondWithJSON(200, videoMetadata);
   } else {
     throw new BadRequestError("Unsupported file type");
@@ -82,3 +84,16 @@ async function getVideoAspectRatio(filePath: string) {
   }
 }
 
+async function processVideoForFastStart(filePath) {
+  const outFilePath = `${filePath}.processed`;
+  const ffmpegProc = Bun.spawn(["ffmpeg", "-i", filePath, "-movflags", "faststart", "-map_metadata", "0", "-codec", "copy", "-f", "mp4", outFilePath], {
+    stderr: "pipe",
+  });
+  const exitCode = await ffmpegProc.exited;
+  if (exitCode === 0) {
+    return outFilePath;
+  } else {
+    console.log(await new Response(ffmpegProc.stderr).text());
+    throw new Error("Unable to process video");
+  }
+}

@@ -46,13 +46,15 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
     const videoFile = Bun.file(processedFilePath);
     await s3File.write(videoFile, { type: fileType });
 
-    const videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${ratio}/${keyName}.${extension}`;
+    const videoURL = `${ratio}/${keyName}.${extension}`;
     videoMetadata.videoURL = videoURL;
     updateVideo(cfg.db, videoMetadata);
 
+    const newVideo = dbVideoToSignedVideo(cfg, videoMetadata);
+
     await Bun.file(filePath).delete();
     await Bun.file(processedFilePath).delete();
-    return respondWithJSON(200, videoMetadata);
+    return respondWithJSON(200, newVideo);
   } else {
     throw new BadRequestError("Unsupported file type");
   }
@@ -96,4 +98,18 @@ async function processVideoForFastStart(filePath) {
     console.log(await new Response(ffmpegProc.stderr).text());
     throw new Error("Unable to process video");
   }
+}
+
+function generatePresignedURL(cfg: ApiConfig, key: string, expireTime: number) {
+  return cfg.s3Client.presign(key, {
+    expiresIn: expireTime,
+  });
+}
+
+export function dbVideoToSignedVideo(cfg: ApiConfig, video: Video) {
+  if (video.videoURL != null) {
+    const presignedURL = generatePresignedURL(cfg, video.videoURL, 3600);
+    video.videoURL = presignedURL;
+  }
+  return video;
 }

@@ -56,9 +56,7 @@ export async function handlerVideoGet(cfg: ApiConfig, req: BunRequest) {
     throw new NotFoundError("Couldn't find video");
   }
 
-  const newVideo = dbVideoToSignedVideo(cfg, video);
-
-  return respondWithJSON(200, newVideo);
+  return respondWithJSON(200, video);
 }
 
 export async function handlerVideosRetrieve(cfg: ApiConfig, req: Request) {
@@ -67,7 +65,5 @@ export async function handlerVideosRetrieve(cfg: ApiConfig, req: Request) {
 
   const videos = getVideos(cfg.db, userID);
 
-  const newVideos = videos.map((video) => dbVideoToSignedVideo(cfg, video));
-
-  return respondWithJSON(200, newVideos);
+  return respondWithJSON(200, videos);
 }
